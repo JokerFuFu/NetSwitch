@@ -1,23 +1,32 @@
 import Foundation
 
 public struct CommandResult: Equatable, Sendable {
-    let status: Int32
-    let output: String
-    let error: String
+    public let status: Int32
+    public let output: String
+    public let error: String
 
-    var combinedOutput: String {
+    public init(status: Int32, output: String = "", error: String = "") {
+        self.status = status
+        self.output = output
+        self.error = error
+    }
+
+    public var combinedOutput: String {
         [output, error].filter { !$0.isEmpty }.joined(separator: "\n")
     }
 }
 
 public enum NetworkSwitchError: LocalizedError {
     case wiFiDeviceNotFound
+    case targetNotFound(String)
     case commandFailed(String)
 
     public var errorDescription: String? {
         switch self {
         case .wiFiDeviceNotFound:
             return "Could not find a Wi-Fi network device."
+        case .targetNotFound(let name):
+            return "Could not find network service \"\(name)\"."
         case .commandFailed(let message):
             return message
         }
@@ -51,6 +60,52 @@ public struct ProcessCommandRunner: CommandRunning, Sendable {
     }
 }
 
+public enum NetworkTargetKind: String, Sendable {
+    case wiFi
+    case wired
+}
+
+public struct NetworkTarget: Equatable, Sendable {
+    public let id: String
+    public let displayName: String
+    public let serviceName: String
+    public let kind: NetworkTargetKind
+    public let ssid: String?
+
+    public init(id: String, displayName: String, serviceName: String, kind: NetworkTargetKind, ssid: String? = nil) {
+        self.id = id
+        self.displayName = displayName
+        self.serviceName = serviceName
+        self.kind = kind
+        self.ssid = ssid
+    }
+}
+
+public struct NetworkServiceState: Equatable, Sendable {
+    public let serviceName: String
+    public let isEnabled: Bool
+    public let ipAddress: String?
+
+    public var isActive: Bool {
+        isEnabled && ipAddress != nil
+    }
+}
+
+public struct NetworkSnapshot: Equatable, Sendable {
+    public let services: [NetworkServiceState]
+    public let currentSSID: String?
+
+    public func state(for serviceName: String) -> NetworkServiceState? {
+        services.first { $0.serviceName == serviceName }
+    }
+
+    public func activeTargets(from targets: [NetworkTarget]) -> [NetworkTarget] {
+        targets.filter { target in
+            state(for: target.serviceName)?.isActive == true
+        }
+    }
+}
+
 public struct NetworkSwitcher: Sendable {
     private let runner: CommandRunning
     private let networksetup = "/usr/sbin/networksetup"
@@ -79,18 +134,56 @@ public struct NetworkSwitcher: Sendable {
         return Self.parseCurrentSSID(from: result.output)
     }
 
-    public func switchToNetwork(named ssid: String) throws {
-        let device = try wiFiDevice()
+    public func snapshot(for targets: [NetworkTarget]) throws -> NetworkSnapshot {
+        let services = try networkServiceEnabledStates()
+        let serviceStates = try targets.map { target in
+            let isEnabled = services[target.serviceName]
+            guard let isEnabled else {
+                throw NetworkSwitchError.targetNotFound(target.serviceName)
+            }
 
-        let powerResult = try runner.run(networksetup, ["-setairportpower", device, "on"])
-        guard powerResult.status == 0 else {
-            throw NetworkSwitchError.commandFailed(powerResult.combinedOutput)
+            let info = try runner.run(networksetup, ["-getinfo", target.serviceName])
+            let ipAddress = info.status == 0 ? Self.parseIPAddress(from: info.output) : nil
+            return NetworkServiceState(serviceName: target.serviceName, isEnabled: isEnabled, ipAddress: ipAddress)
         }
 
-        let switchResult = try runner.run(networksetup, ["-setairportnetwork", device, ssid])
-        guard switchResult.status == 0 else {
-            let message = switchResult.combinedOutput.isEmpty ? "Failed to switch to \(ssid)." : switchResult.combinedOutput
-            throw NetworkSwitchError.commandFailed(message)
+        return NetworkSnapshot(services: serviceStates, currentSSID: try? currentSSID())
+    }
+
+    public func switchToTarget(_ target: NetworkTarget, among targets: [NetworkTarget]) throws {
+        try setNetworkService(target.serviceName, enabled: true)
+
+        if target.kind == .wiFi {
+            let device = try wiFiDevice()
+            try runRequired(["-setairportpower", device, "on"])
+
+            if let ssid = target.ssid {
+                try runRequired(["-setairportnetwork", device, ssid])
+            }
+        }
+
+        let servicesToDisable = Set(targets.map(\.serviceName)).subtracting([target.serviceName])
+        for serviceName in servicesToDisable.sorted() {
+            try setNetworkService(serviceName, enabled: false)
+        }
+    }
+
+    private func networkServiceEnabledStates() throws -> [String: Bool] {
+        let result = try runner.run(networksetup, ["-listallnetworkservices"])
+        guard result.status == 0 else {
+            throw NetworkSwitchError.commandFailed(result.combinedOutput)
+        }
+        return Self.parseNetworkServices(from: result.output)
+    }
+
+    private func setNetworkService(_ serviceName: String, enabled: Bool) throws {
+        try runRequired(["-setnetworkserviceenabled", serviceName, enabled ? "on" : "off"])
+    }
+
+    private func runRequired(_ arguments: [String]) throws {
+        let result = try runner.run(networksetup, arguments)
+        guard result.status == 0 else {
+            throw NetworkSwitchError.commandFailed(result.combinedOutput.isEmpty ? "networksetup \(arguments.joined(separator: " ")) failed." : result.combinedOutput)
         }
     }
 
@@ -115,5 +208,41 @@ public struct NetworkSwitcher: Sendable {
         }
         let ssid = output[output.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
         return ssid.isEmpty ? nil : ssid
+    }
+
+    public static func parseNetworkServices(from output: String) -> [String: Bool] {
+        var services: [String: Bool] = [:]
+
+        for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(rawLine).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty, !line.hasPrefix("An asterisk") else {
+                continue
+            }
+
+            if line.hasPrefix("*") {
+                let name = String(line.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+                services[name] = false
+            } else {
+                services[line] = true
+            }
+        }
+
+        return services
+    }
+
+    public static func parseIPAddress(from output: String) -> String? {
+        for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(rawLine).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard line.hasPrefix("IP address:") else {
+                continue
+            }
+
+            let address = String(line.dropFirst("IP address:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !address.isEmpty, address.lowercased() != "none" {
+                return address
+            }
+        }
+
+        return nil
     }
 }

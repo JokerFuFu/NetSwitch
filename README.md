@@ -1,17 +1,17 @@
 # NetSwitch
 
-NetSwitch is a small native macOS menu bar app for switching between saved Wi-Fi networks with one click.
+NetSwitch is a small native macOS menu bar app for switching between network services with one click.
 
 The first version includes two menu choices:
 
-- `Wi-Fi`
-- `F50 Pro`
+- `Wi-Fi`, the built-in wireless network service
+- `F50 Pro`, a wired network service
 
 ## Requirements
 
 - macOS 13 or later
 - Apple Swift command line tools
-- The target Wi-Fi networks must already be saved in macOS
+- The target network services must exist in macOS Network settings
 
 ## Build
 
@@ -41,14 +41,16 @@ Open the built app:
 open .build/NetSwitch.app
 ```
 
-NetSwitch appears as a Wi-Fi icon in the macOS menu bar. Click the icon and choose `Wi-Fi` or `F50 Pro` to switch networks.
+NetSwitch appears in the macOS menu bar. The status item shows the active target when one is detected. Click the item and choose `Wi-Fi` or `F50 Pro` to switch networks.
 
 ## How It Works
 
 NetSwitch uses macOS' built-in `networksetup` command:
 
-- Finds the Wi-Fi device with `networksetup -listallhardwareports`
-- Reads the current SSID with `networksetup -getairportnetwork`
-- Switches networks with `networksetup -setairportnetwork`
+- Reads network services with `networksetup -listallnetworkservices`
+- Reads each target service IP with `networksetup -getinfo`
+- Enables the selected service with `networksetup -setnetworkserviceenabled <service> on`
+- Disables the other managed services with `networksetup -setnetworkserviceenabled <service> off`
+- Reads the Wi-Fi SSID with `networksetup -getairportnetwork` when Wi-Fi is active
 
-If macOS does not already know the password for a selected network, the switch can fail. Join the network once from System Settings first, then use NetSwitch.
+For a Wi-Fi target, NetSwitch also turns Wi-Fi power on before switching. For the default `F50 Pro` wired target, NetSwitch enables the `F50 Pro` service and disables `Wi-Fi`.
