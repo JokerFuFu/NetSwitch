@@ -1,3 +1,4 @@
+import CoreWLAN
 import Foundation
 
 public struct CommandResult: Equatable, Sendable {
@@ -37,6 +38,10 @@ public protocol CommandRunning: Sendable {
     func run(_ executable: String, _ arguments: [String]) throws -> CommandResult
 }
 
+public protocol WiFiManaging: Sendable {
+    func disconnectCurrentNetwork(device: String) throws
+}
+
 public struct ProcessCommandRunner: CommandRunning, Sendable {
     public init() {}
 
@@ -57,6 +62,16 @@ public struct ProcessCommandRunner: CommandRunning, Sendable {
         let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
 
         return CommandResult(status: process.terminationStatus, output: output.trimmingCharacters(in: .whitespacesAndNewlines), error: error.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+}
+
+public struct CoreWLANWiFiManager: WiFiManaging, Sendable {
+    public init() {}
+
+    public func disconnectCurrentNetwork(device: String) throws {
+        let client = CWWiFiClient.shared()
+        let wiFiInterface = client.interface(withName: device) ?? client.interface()
+        wiFiInterface?.disassociate()
     }
 }
 
@@ -101,17 +116,28 @@ public struct NetworkSnapshot: Equatable, Sendable {
 
     public func activeTargets(from targets: [NetworkTarget]) -> [NetworkTarget] {
         targets.filter { target in
-            state(for: target.serviceName)?.isActive == true
+            guard let state = state(for: target.serviceName) else {
+                return false
+            }
+
+            switch target.kind {
+            case .wiFi:
+                return state.isEnabled && currentSSID != nil
+            case .wired:
+                return state.isActive
+            }
         }
     }
 }
 
 public struct NetworkSwitcher: Sendable {
     private let runner: CommandRunning
+    private let wiFiManager: WiFiManaging
     private let networksetup = "/usr/sbin/networksetup"
 
-    public init(runner: CommandRunning = ProcessCommandRunner()) {
+    public init(runner: CommandRunning = ProcessCommandRunner(), wiFiManager: WiFiManaging = CoreWLANWiFiManager()) {
         self.runner = runner
+        self.wiFiManager = wiFiManager
     }
 
     public func wiFiDevice() throws -> String {
@@ -162,9 +188,16 @@ public struct NetworkSwitcher: Sendable {
             }
         }
 
-        let servicesToDisable = Set(targets.map(\.serviceName)).subtracting([target.serviceName])
-        for serviceName in servicesToDisable.sorted() {
-            try setNetworkService(serviceName, enabled: false)
+        for otherTarget in targets where otherTarget.id != target.id {
+            switch (target.kind, otherTarget.kind) {
+            case (.wired, .wiFi):
+                let device = try wiFiDevice()
+                try runRequired(["-setairportpower", device, "on"])
+                try setNetworkService(otherTarget.serviceName, enabled: true)
+                try wiFiManager.disconnectCurrentNetwork(device: device)
+            default:
+                try setNetworkService(otherTarget.serviceName, enabled: false)
+            }
         }
     }
 

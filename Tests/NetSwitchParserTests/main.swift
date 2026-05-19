@@ -46,14 +46,26 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
     }
 }
 
+final class FakeWiFiManager: WiFiManaging, @unchecked Sendable {
+    var disconnectedDevices: [String] = []
+
+    func disconnectCurrentNetwork(device: String) throws {
+        disconnectedDevices.append(device)
+    }
+}
+
 let fakeRunner = FakeRunner()
-let switcher = NetworkSwitcher(runner: fakeRunner)
+let fakeWiFiManager = FakeWiFiManager()
+let switcher = NetworkSwitcher(runner: fakeRunner, wiFiManager: fakeWiFiManager)
 let wifi = NetworkTarget(id: "wifi", displayName: "Wi-Fi", serviceName: "Wi-Fi", kind: .wiFi)
 let f50 = NetworkTarget(id: "f50-pro", displayName: "F50 Pro", serviceName: "F50 Pro", kind: .wired)
 try switcher.switchToTarget(f50, among: [wifi, f50])
 expectEqual(fakeRunner.calls, [
     ["-setnetworkserviceenabled", "F50 Pro", "on"],
-    ["-setnetworkserviceenabled", "Wi-Fi", "off"]
-], "wired target enables F50 Pro and disables Wi-Fi")
+    ["-listallhardwareports"],
+    ["-setairportpower", "en0", "on"],
+    ["-setnetworkserviceenabled", "Wi-Fi", "on"]
+], "wired target enables F50 Pro and keeps Wi-Fi service on")
+expectEqual(fakeWiFiManager.disconnectedDevices, ["en0"], "wired target disconnects Wi-Fi without powering it off")
 
 print("NetSwitch parser tests passed")

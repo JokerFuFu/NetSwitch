@@ -12,7 +12,10 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "NetSwitchCore"
+            name: "NetSwitchCore",
+            linkerSettings: [
+                .linkedFramework("CoreWLAN")
+            ]
         ),
         .executableTarget(
             name: "NetSwitch",

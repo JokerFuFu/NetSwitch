@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NetworkTarget(id: "f50-pro", displayName: "F50 Pro", serviceName: "F50 Pro", kind: .wired)
     ]
     private var isSwitching = false
+    private var refreshTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -110,12 +111,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let state = snapshot?.state(for: target.serviceName)
         let detail: String
 
-        if state?.isActive == true, let ipAddress = state?.ipAddress {
-            detail = ipAddress
-        } else if state?.isEnabled == false {
+        if state?.isEnabled == false {
             detail = "Off"
+        } else if let ipAddress = state?.ipAddress {
+            if target.kind == .wiFi, snapshot?.currentSSID == nil {
+                detail = "On, not connected"
+            } else {
+                detail = ipAddress
+            }
+        } else if target.kind == .wiFi, snapshot?.currentSSID != nil {
+            detail = "Connected, waiting for IP"
+        } else if target.kind == .wiFi {
+            detail = "On, not connected"
         } else {
-            detail = "Ready"
+            detail = "Connecting"
         }
 
         return "\(target.displayName)  \(detail)"
@@ -134,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await MainActor.run {
                     self.isSwitching = false
                     self.rebuildMenu()
+                    self.refreshUntilSettled(preferredTarget: target)
                 }
             } catch {
                 let message = error.localizedDescription
@@ -151,7 +161,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quit() {
+        refreshTask?.cancel()
         NSApp.terminate(nil)
+    }
+
+    private func refreshUntilSettled(preferredTarget: NetworkTarget) {
+        refreshTask?.cancel()
+        let switcher = switcher
+        let targets = targets
+
+        refreshTask = Task { [weak self] in
+            for _ in 0..<12 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled else { return }
+
+                let snapshot = try? switcher.snapshot(for: targets)
+                await MainActor.run {
+                    self?.rebuildMenu()
+                }
+
+                if let snapshot, self?.hasIPAddress(for: preferredTarget, in: snapshot) == true {
+                    return
+                }
+            }
+        }
+    }
+
+    private nonisolated func hasIPAddress(for target: NetworkTarget, in snapshot: NetworkSnapshot) -> Bool {
+        snapshot.state(for: target.serviceName)?.ipAddress != nil
     }
 
     private func showError(_ message: String, target: NetworkTarget) {

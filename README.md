@@ -50,7 +50,8 @@ NetSwitch uses macOS' built-in `networksetup` command:
 - Reads network services with `networksetup -listallnetworkservices`
 - Reads each target service IP with `networksetup -getinfo`
 - Enables the selected service with `networksetup -setnetworkserviceenabled <service> on`
-- Disables the other managed services with `networksetup -setnetworkserviceenabled <service> off`
+- When switching to `Wi-Fi`, disables the managed wired service
+- When switching to `F50 Pro`, keeps Wi-Fi service and Wi-Fi power on, then disconnects the current Wi-Fi association through CoreWLAN
 - Reads the Wi-Fi SSID with `networksetup -getairportnetwork` when Wi-Fi is active
 
-For a Wi-Fi target, NetSwitch also turns Wi-Fi power on before switching. For the default `F50 Pro` wired target, NetSwitch enables the `F50 Pro` service and disables `Wi-Fi`.
+After a switch, NetSwitch refreshes the menu automatically for a few seconds so DHCP-assigned IP addresses appear without clicking the menu again.
