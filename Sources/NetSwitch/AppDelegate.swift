@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         rebuildMenu()
         startAutoMonitor()
+        showGuideIfNeeded()
         NotificationCenter.default.addObserver(forName: .netSwitchSettingsChanged, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 self?.rebuildMenu()
@@ -230,6 +231,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guideWindowController?.showWindow(nil)
         guideWindowController?.window?.center()
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func showGuideIfNeeded() {
+        guard !preferences.hasShownGuide else { return }
+        preferences.hasShownGuide = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            self?.openGuide()
+        }
     }
 
     @objc private func quit() {

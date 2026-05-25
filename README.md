@@ -54,6 +54,8 @@ NetSwitch includes a `How to Use` guide from the menu bar item. It shows a simpl
 - `Settings`: choose services and automatic priority for this Mac
 - `Refresh`: update IP, SSID, and connection status
 
+The first launch also opens the visual guide once, so new users can understand the Wi-Fi and wired switching model before changing network state.
+
 ## Settings
 
 Open `Settings...` from the menu bar item to:

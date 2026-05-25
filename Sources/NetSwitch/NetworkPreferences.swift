@@ -12,6 +12,7 @@ final class NetworkPreferences {
         static let wiredService = "wiredService"
         static let autoMode = "autoMode"
         static let autoPriority = "autoPriority"
+        static let hasShownGuide = "hasShownGuide"
     }
 
     private let defaults: UserDefaults
@@ -38,6 +39,11 @@ final class NetworkPreferences {
     var autoPriority: AutoPriority {
         get { AutoPriority(rawValue: defaults.string(forKey: Key.autoPriority) ?? "") ?? .wired }
         set { defaults.set(newValue.rawValue, forKey: Key.autoPriority) }
+    }
+
+    var hasShownGuide: Bool {
+        get { defaults.bool(forKey: Key.hasShownGuide) }
+        set { defaults.set(newValue, forKey: Key.hasShownGuide) }
     }
 
     func targetServices(from discovered: [NetworkServiceDescriptor], switcher: NetworkSwitcher) -> [NetworkTarget] {

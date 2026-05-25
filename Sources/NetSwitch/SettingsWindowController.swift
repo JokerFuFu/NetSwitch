@@ -11,11 +11,11 @@ final class SettingsWindowController: NSWindowController {
     private let wiredPopup = NSPopUpButton()
     private let autoModeButton = NSButton(checkboxWithTitle: "Automatic mode", target: nil, action: nil)
     private let priorityControl = NSSegmentedControl(labels: ["Wired first", "Wi-Fi first"], trackingMode: .selectOne, target: nil, action: nil)
-    private let statusLabel = NSTextField(labelWithString: "")
+    private let statusLabel = DesignSystem.wrappedLabel("")
 
     init(switcher: NetworkSwitcher) {
         self.switcher = switcher
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 390), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 460), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "NetSwitch Settings"
         window.isReleasedWhenClosed = false
         super.init(window: window)
@@ -33,7 +33,7 @@ final class SettingsWindowController: NSWindowController {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .width
-        stack.spacing = 16
+        stack.spacing = 14
         stack.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(stack)
 
@@ -44,6 +44,7 @@ final class SettingsWindowController: NSWindowController {
         ])
 
         stack.addArrangedSubview(header())
+        stack.addArrangedSubview(overview())
         stack.addArrangedSubview(section(icon: "wifi", title: "Wi-Fi Target", detail: "Used when switching back to wireless.", control: wiFiPopup))
         stack.addArrangedSubview(section(icon: "cable.connector", title: "Wired Target", detail: "Real Ethernet, USB LAN, or Thunderbolt Ethernet services are recommended.", control: wiredPopup))
         stack.addArrangedSubview(section(icon: "arrow.triangle.2.circlepath", title: "Automatic Mode", detail: "Let NetSwitch choose a target using your preferred priority.", control: autoModeButton))
@@ -61,11 +62,9 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func header() -> NSView {
-        let icon = symbol("switch.2", size: 34)
-        let title = NSTextField(labelWithString: "Network Switching")
-        title.font = .systemFont(ofSize: 22, weight: .semibold)
-        let detail = NSTextField(wrappingLabelWithString: "Pick the services this Mac should use. NetSwitch will remember these choices locally.")
-        detail.textColor = .secondaryLabelColor
+        let icon = DesignSystem.iconBubble(symbol: "switch.2", tint: DesignSystem.accent, size: 28)
+        let title = DesignSystem.label("Network Switching", size: 22, weight: .semibold)
+        let detail = DesignSystem.wrappedLabel("Pick the services this Mac should use. NetSwitch remembers these choices locally.")
 
         let text = NSStackView(views: [title, detail])
         text.orientation = .vertical
@@ -78,14 +77,45 @@ final class SettingsWindowController: NSWindowController {
         return stack
     }
 
-    private func section(icon: String, title: String, detail: String, control: NSView) -> NSView {
-        let image = symbol(icon, size: 22)
+    private func overview() -> NSView {
+        let cards = NSStackView(views: [
+            miniCard(icon: "wifi", title: "Wi-Fi", detail: selectedServiceName(from: wiFiPopup) ?? "Auto detected", tint: DesignSystem.accent),
+            miniCard(icon: "cable.connector", title: "Wired", detail: selectedServiceName(from: wiredPopup) ?? "Auto detected", tint: DesignSystem.wired),
+            miniCard(icon: "arrow.triangle.2.circlepath", title: "Auto", detail: preferences.autoMode ? "Enabled" : "Manual", tint: preferences.autoMode ? DesignSystem.accent : .secondaryLabelColor)
+        ])
+        cards.orientation = .horizontal
+        cards.spacing = 10
+        cards.distribution = .fillEqually
+        return cards
+    }
 
-        let titleLabel = NSTextField(labelWithString: title)
-        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        let detailLabel = NSTextField(wrappingLabelWithString: detail)
-        detailLabel.textColor = .secondaryLabelColor
-        detailLabel.font = .systemFont(ofSize: 12)
+    private func miniCard(icon: String, title: String, detail: String, tint: NSColor) -> NSView {
+        let image = DesignSystem.iconBubble(symbol: icon, tint: tint, size: 18)
+        let titleLabel = DesignSystem.label(title, size: 12, weight: .semibold)
+        let detailLabel = DesignSystem.wrappedLabel(detail, size: 11)
+        detailLabel.lineBreakMode = .byTruncatingTail
+
+        let text = NSStackView(views: [titleLabel, detailLabel])
+        text.orientation = .vertical
+        text.spacing = 2
+
+        let row = NSStackView(views: [image, text])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 10
+        row.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
+        row.wantsLayer = true
+        row.layer?.cornerRadius = 8
+        row.layer?.backgroundColor = DesignSystem.cardBackground()
+        return row
+    }
+
+    private func section(icon: String, title: String, detail: String, control: NSView) -> NSView {
+        let tint = icon == "cable.connector" ? DesignSystem.wired : DesignSystem.accent
+        let image = DesignSystem.iconBubble(symbol: icon, tint: tint, size: 19)
+
+        let titleLabel = DesignSystem.label(title, size: 13, weight: .semibold)
+        let detailLabel = DesignSystem.wrappedLabel(detail, size: 12)
 
         let text = NSStackView(views: [titleLabel, detailLabel])
         text.orientation = .vertical
@@ -101,19 +131,8 @@ final class SettingsWindowController: NSWindowController {
         row.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
         row.wantsLayer = true
         row.layer?.cornerRadius = 8
-        row.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        row.layer?.backgroundColor = DesignSystem.cardBackground()
         return row
-    }
-
-    private func symbol(_ name: String, size: CGFloat) -> NSImageView {
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
-        image.isTemplate = true
-        let imageView = NSImageView(image: image)
-        imageView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: size, weight: .regular)
-        imageView.contentTintColor = .controlAccentColor
-        imageView.widthAnchor.constraint(equalToConstant: size + 4).isActive = true
-        imageView.heightAnchor.constraint(equalToConstant: size + 4).isActive = true
-        return imageView
     }
 
     func reload() {
@@ -126,6 +145,10 @@ final class SettingsWindowController: NSWindowController {
         let wiredCount = services.filter { $0.kind == .wired }.count
         statusLabel.stringValue = wiredCount == 0 ? "No wired network service found. Wi-Fi remains available." : "Network services are detected from this Mac."
         statusLabel.textColor = wiredCount == 0 ? .systemOrange : .secondaryLabelColor
+    }
+
+    private func selectedServiceName(from popup: NSPopUpButton) -> String? {
+        popup.selectedItem?.representedObject as? String
     }
 
     private func populate(_ popup: NSPopUpButton, with descriptors: [NetworkServiceDescriptor], selected: String?) {
