@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var refreshTask: Task<Void, Never>?
     private var autoTask: Task<Void, Never>?
     private var settingsWindowController: SettingsWindowController?
+    private var guideWindowController: GuideWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -47,11 +48,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateStatusButton(activeTargets: activeTargets)
 
         let currentItem = NSMenuItem(title: statusTitle(for: activeTargets, snapshot: snapshot), action: nil, keyEquivalent: "")
+        currentItem.image = menuIcon("dot.radiowaves.left.and.right")
         currentItem.isEnabled = false
         menu.addItem(currentItem)
 
         if let ssid = snapshot?.currentSSID, activeTargets.contains(where: { $0.kind == .wiFi }) {
             let ssidItem = NSMenuItem(title: "Wi-Fi SSID: \(ssid)", action: nil, keyEquivalent: "")
+            ssidItem.image = menuIcon("wifi")
             ssidItem.isEnabled = false
             menu.addItem(ssidItem)
         }
@@ -60,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if targets.isEmpty {
             let setupItem = NSMenuItem(title: "No network targets found", action: nil, keyEquivalent: "")
+            setupItem.image = menuIcon("exclamationmark.triangle")
             setupItem.isEnabled = false
             menu.addItem(setupItem)
         }
@@ -69,12 +73,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.target = self
             item.representedObject = target.id
             item.state = activeTargets.contains(target) ? .on : .off
+            item.image = menuIcon(target.kind == .wiFi ? "wifi" : "cable.connector")
             item.isEnabled = !isSwitching
             menu.addItem(item)
         }
 
         if targets.contains(where: { $0.kind == .wired }) == false {
             let wiredItem = NSMenuItem(title: "No wired service found", action: nil, keyEquivalent: "")
+            wiredItem.image = menuIcon("cable.connector.slash")
             wiredItem.isEnabled = false
             menu.addItem(wiredItem)
         }
@@ -82,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if isSwitching {
             menu.addItem(.separator())
             let switchingItem = NSMenuItem(title: "Switching...", action: nil, keyEquivalent: "")
+            switchingItem.image = menuIcon("arrow.triangle.2.circlepath")
             switchingItem.isEnabled = false
             menu.addItem(switchingItem)
         }
@@ -89,15 +96,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshMenu), keyEquivalent: "r")
         refreshItem.target = self
+        refreshItem.image = menuIcon("arrow.clockwise")
         refreshItem.isEnabled = !isSwitching
         menu.addItem(refreshItem)
 
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
+        settingsItem.image = menuIcon("gearshape")
         menu.addItem(settingsItem)
+
+        let guideItem = NSMenuItem(title: "How to Use", action: #selector(openGuide), keyEquivalent: "?")
+        guideItem.target = self
+        guideItem.image = menuIcon("questionmark.circle")
+        menu.addItem(guideItem)
 
         let quitItem = NSMenuItem(title: "Quit NetSwitch", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
+        quitItem.image = menuIcon("power")
         menu.addItem(quitItem)
 
         statusItem.menu = menu
@@ -155,6 +170,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return "\(target.displayName)  \(detail)"
     }
 
+    private func menuIcon(_ name: String) -> NSImage? {
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+        image?.isTemplate = true
+        image?.size = NSSize(width: 16, height: 16)
+        return image
+    }
+
     @objc private func selectTarget(_ sender: NSMenuItem) {
         let services = (try? switcher.discoverServices()) ?? []
         let targets = preferences.targetServices(from: services, switcher: switcher)
@@ -198,6 +220,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController?.reload()
         settingsWindowController?.showWindow(nil)
         settingsWindowController?.window?.center()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func openGuide() {
+        if guideWindowController == nil {
+            guideWindowController = GuideWindowController()
+        }
+        guideWindowController?.showWindow(nil)
+        guideWindowController?.window?.center()
         NSApp.activate(ignoringOtherApps: true)
     }
 

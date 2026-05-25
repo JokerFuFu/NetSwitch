@@ -45,6 +45,15 @@ open .build/NetSwitch.app
 
 NetSwitch appears in the macOS menu bar. The status item shows `Wi-Fi`, `Wired`, `Offline`, or `Mixed`. Click the item to switch targets, refresh status, or open Settings.
 
+## Visual Guide
+
+NetSwitch includes a `How to Use` guide from the menu bar item. It shows a simple Wi-Fi → NetSwitch → Wired flow and explains the main actions with icons:
+
+- `Wi-Fi`: switch back to the selected wireless service
+- `Wired`: switch to the selected Ethernet/USB/Thunderbolt service
+- `Settings`: choose services and automatic priority for this Mac
+- `Refresh`: update IP, SSID, and connection status
+
 ## Settings
 
 Open `Settings...` from the menu bar item to:
