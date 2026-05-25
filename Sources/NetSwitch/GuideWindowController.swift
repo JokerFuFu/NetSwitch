@@ -4,7 +4,7 @@ import AppKit
 final class GuideWindowController: NSWindowController {
     init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 440), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "How to Use NetSwitch"
+        window.title = "NetSwitch 使用引导"
         window.isReleasedWhenClosed = false
         super.init(window: window)
         buildContent()
@@ -32,10 +32,10 @@ final class GuideWindowController: NSWindowController {
 
         root.addArrangedSubview(header())
         root.addArrangedSubview(flow())
-        root.addArrangedSubview(step(icon: "menubar.rectangle", title: "Use the menu bar", detail: "NetSwitch lives in the menu bar. The label shows Wi-Fi, Wired, Offline, or Mixed."))
-        root.addArrangedSubview(step(icon: "wifi", title: "Switch to Wi-Fi", detail: "Choose Wi-Fi to enable the selected Wi-Fi service and turn off the managed wired service."))
-        root.addArrangedSubview(step(icon: "cable.connector", title: "Switch to wired", detail: "Choose Wired to enable the selected wired service while keeping Wi-Fi powered on but disconnected."))
-        root.addArrangedSubview(step(icon: "gearshape", title: "Tune per Mac", detail: "Open Settings to choose this Mac's Wi-Fi service, wired service, and automatic priority."))
+        root.addArrangedSubview(step(icon: "menubar.rectangle", title: "从菜单栏使用", detail: "NetSwitch 常驻菜单栏，状态会显示「无线」「有线」「离线」或「混合」。"))
+        root.addArrangedSubview(step(icon: "wifi", title: "切换到无线", detail: "选择无线后，会启用选中的 Wi-Fi 服务，并停用托管的有线服务。"))
+        root.addArrangedSubview(step(icon: "cable.connector", title: "切换到有线", detail: "选择有线后，会启用选中的有线服务，同时保持 Wi-Fi 开关打开但断开当前连接。"))
+        root.addArrangedSubview(step(icon: "gearshape", title: "按这台 Mac 调整", detail: "在设置里选择无线服务、有线服务、自动模式和登录自启。"))
     }
 
     private func header() -> NSView {
@@ -43,7 +43,7 @@ final class GuideWindowController: NSWindowController {
         let title = NSTextField(labelWithString: "NetSwitch")
         title.font = .systemFont(ofSize: 24, weight: .semibold)
 
-        let subtitle = NSTextField(wrappingLabelWithString: "A small menu bar tool for moving between Wi-Fi and wired network connections.")
+        let subtitle = NSTextField(wrappingLabelWithString: "一个在菜单栏里快速切换无线和有线网络的小工具。")
         subtitle.textColor = .secondaryLabelColor
 
         let text = NSStackView(views: [title, subtitle])
@@ -58,9 +58,9 @@ final class GuideWindowController: NSWindowController {
     }
 
     private func flow() -> NSView {
-        let wifi = flowNode(icon: "wifi", title: "Wi-Fi")
+        let wifi = flowNode(icon: "wifi", title: "无线")
         let app = flowNode(icon: "switch.2", title: "NetSwitch")
-        let wired = flowNode(icon: "cable.connector", title: "Wired")
+        let wired = flowNode(icon: "cable.connector", title: "有线")
         let arrow1 = symbol("arrow.right", size: 20)
         let arrow2 = symbol("arrow.right", size: 20)
 

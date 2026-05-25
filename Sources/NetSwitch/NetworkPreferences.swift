@@ -13,6 +13,7 @@ final class NetworkPreferences {
         static let autoMode = "autoMode"
         static let autoPriority = "autoPriority"
         static let hasShownGuide = "hasShownGuide"
+        static let launchAtLogin = "launchAtLogin"
     }
 
     private let defaults: UserDefaults
@@ -44,6 +45,16 @@ final class NetworkPreferences {
     var hasShownGuide: Bool {
         get { defaults.bool(forKey: Key.hasShownGuide) }
         set { defaults.set(newValue, forKey: Key.hasShownGuide) }
+    }
+
+    var launchAtLogin: Bool {
+        get {
+            guard defaults.object(forKey: Key.launchAtLogin) != nil else {
+                return true
+            }
+            return defaults.bool(forKey: Key.launchAtLogin)
+        }
+        set { defaults.set(newValue, forKey: Key.launchAtLogin) }
     }
 
     func targetServices(from discovered: [NetworkServiceDescriptor], switcher: NetworkSwitcher) -> [NetworkTarget] {

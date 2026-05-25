@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let switcher = NetworkSwitcher()
     private let preferences = NetworkPreferences()
+    private let launchAtLoginManager = LaunchAtLoginManager()
     private var isSwitching = false
     private var refreshTask: Task<Void, Never>?
     private var autoTask: Task<Void, Never>?
@@ -16,11 +17,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         configureStatusItem()
         rebuildMenu()
+        syncLaunchAtLogin()
         startAutoMonitor()
         showGuideIfNeeded()
         NotificationCenter.default.addObserver(forName: .netSwitchSettingsChanged, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 self?.rebuildMenu()
+                self?.syncLaunchAtLogin()
                 self?.startAutoMonitor()
             }
         }
@@ -54,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(currentItem)
 
         if let ssid = snapshot?.currentSSID, activeTargets.contains(where: { $0.kind == .wiFi }) {
-            let ssidItem = NSMenuItem(title: "Wi-Fi SSID: \(ssid)", action: nil, keyEquivalent: "")
+            let ssidItem = NSMenuItem(title: "当前 Wi-Fi：\(ssid)", action: nil, keyEquivalent: "")
             ssidItem.image = menuIcon("wifi")
             ssidItem.isEnabled = false
             menu.addItem(ssidItem)
@@ -63,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
 
         if targets.isEmpty {
-            let setupItem = NSMenuItem(title: "No network targets found", action: nil, keyEquivalent: "")
+            let setupItem = NSMenuItem(title: "未找到可切换的网络目标", action: nil, keyEquivalent: "")
             setupItem.image = menuIcon("exclamationmark.triangle")
             setupItem.isEnabled = false
             menu.addItem(setupItem)
@@ -80,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if targets.contains(where: { $0.kind == .wired }) == false {
-            let wiredItem = NSMenuItem(title: "No wired service found", action: nil, keyEquivalent: "")
+            let wiredItem = NSMenuItem(title: "未找到有线网络服务", action: nil, keyEquivalent: "")
             wiredItem.image = menuIcon("cable.connector.slash")
             wiredItem.isEnabled = false
             menu.addItem(wiredItem)
@@ -88,30 +91,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if isSwitching {
             menu.addItem(.separator())
-            let switchingItem = NSMenuItem(title: "Switching...", action: nil, keyEquivalent: "")
+            let switchingItem = NSMenuItem(title: "正在切换...", action: nil, keyEquivalent: "")
             switchingItem.image = menuIcon("arrow.triangle.2.circlepath")
             switchingItem.isEnabled = false
             menu.addItem(switchingItem)
         }
 
         menu.addItem(.separator())
-        let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshMenu), keyEquivalent: "r")
+        let refreshItem = NSMenuItem(title: "刷新状态", action: #selector(refreshMenu), keyEquivalent: "r")
         refreshItem.target = self
         refreshItem.image = menuIcon("arrow.clockwise")
         refreshItem.isEnabled = !isSwitching
         menu.addItem(refreshItem)
 
-        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "设置...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         settingsItem.image = menuIcon("gearshape")
         menu.addItem(settingsItem)
 
-        let guideItem = NSMenuItem(title: "How to Use", action: #selector(openGuide), keyEquivalent: "?")
+        let guideItem = NSMenuItem(title: "使用引导", action: #selector(openGuide), keyEquivalent: "?")
         guideItem.target = self
         guideItem.image = menuIcon("questionmark.circle")
         menu.addItem(guideItem)
 
-        let quitItem = NSMenuItem(title: "Quit NetSwitch", action: #selector(quit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "退出 NetSwitch", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         quitItem.image = menuIcon("power")
         menu.addItem(quitItem)
@@ -124,13 +127,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if activeTargets.count == 1 {
             let target = activeTargets[0]
-            button.title = target.kind == .wiFi ? " Wi-Fi" : " Wired"
+            button.title = target.kind == .wiFi ? " 无线" : " 有线"
             button.image = NSImage(systemSymbolName: target.kind == .wiFi ? "wifi" : "cable.connector", accessibilityDescription: target.displayName)
         } else if activeTargets.isEmpty {
-            button.title = " Offline"
+            button.title = " 离线"
             button.image = NSImage(systemSymbolName: "network.slash", accessibilityDescription: "No active network")
         } else {
-            button.title = " Mixed"
+            button.title = " 混合"
             button.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: "Multiple active networks")
         }
         button.image?.isTemplate = true
@@ -140,12 +143,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func statusTitle(for activeTargets: [NetworkTarget], snapshot: NetworkSnapshot?) -> String {
         if activeTargets.count == 1 {
             let activeTarget = activeTargets[0]
-            return "Active: \(activeTarget.kind == .wiFi ? "Wi-Fi" : "Wired")"
+            return "当前连接：\(activeTarget.kind == .wiFi ? "无线网络" : "有线网络")"
         }
         if activeTargets.isEmpty {
-            return snapshot == nil ? "Active: Unable to read network state" : "Active: None"
+            return snapshot == nil ? "当前连接：无法读取网络状态" : "当前连接：无"
         }
-        return "Active: \(activeTargets.map(\.displayName).joined(separator: " + "))"
+        return "当前连接：\(activeTargets.map(\.displayName).joined(separator: " + "))"
     }
 
     private func menuTitle(for target: NetworkTarget, snapshot: NetworkSnapshot?) -> String {
@@ -153,19 +156,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let detail: String
 
         if state?.isEnabled == false {
-            detail = "Off"
+            detail = "已停用"
         } else if let ipAddress = state?.ipAddress {
             if target.kind == .wiFi, snapshot?.currentSSID == nil {
-                detail = "On, not connected"
+                detail = "已开启，未连接"
             } else {
                 detail = ipAddress
             }
         } else if target.kind == .wiFi, snapshot?.currentSSID != nil {
-            detail = "Connected, waiting for IP"
+            detail = "已连接，等待 IP"
         } else if target.kind == .wiFi {
-            detail = "On, not connected"
+            detail = "已开启，未连接"
         } else {
-            detail = "Connecting"
+            detail = "正在连接"
         }
 
         return "\(target.displayName)  \(detail)"
@@ -291,6 +294,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func syncLaunchAtLogin() {
+        if preferences.launchAtLogin {
+            try? launchAtLoginManager.enable()
+        } else {
+            launchAtLoginManager.disable()
+        }
+    }
+
     private func evaluateAutoMode(switcher: NetworkSwitcher) {
         guard !isSwitching else { return }
 
@@ -330,10 +341,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showError(_ message: String, target: NetworkTarget) {
         let alert = NSAlert()
-        alert.messageText = "Could not switch to \(target.displayName)"
+        alert.messageText = "无法切换到 \(target.displayName)"
         alert.informativeText = message
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "好")
         alert.runModal()
     }
 }

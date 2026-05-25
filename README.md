@@ -1,120 +1,123 @@
 # NetSwitch
 
-NetSwitch is a small native macOS menu bar app for switching between Wi-Fi and wired network services with one click.
+NetSwitch 是一个原生 macOS 菜单栏应用，用来在无线网络和有线网络之间快速切换。
 
-NetSwitch automatically detects this Mac's network services:
+NetSwitch 会自动识别这台 Mac 上的网络服务：
 
-- The built-in Wi-Fi service
-- A real wired Ethernet, USB LAN, or Thunderbolt Ethernet service
+- 内建 Wi-Fi 服务
+- 真实的以太网、USB 网卡或雷雳网卡服务
 
-VPN, proxy, bridge, and virtual services are excluded from wired recommendations.
+VPN、代理、桥接和虚拟网卡不会被推荐为有线网络目标。
 
-## Requirements
+默认语言为中文，默认登录 macOS 后自动启动。
+
+## 环境要求
 
 - macOS 13 or later
 - Apple Swift command line tools
-- The target network services must exist in macOS Network settings
+- 目标网络服务需要存在于 macOS 网络设置中
 
-## Build
+## 构建
 
-Run the test suite:
+运行测试：
 
 ```sh
 swift run NetSwitchParserTests
 ```
 
-Build a macOS app bundle:
+构建 macOS app：
 
 ```sh
 ./scripts/build-app.sh
 ```
 
-The app bundle is created at:
+产物位置：
 
 ```text
 .build/NetSwitch.app
 ```
 
-## Run
+## 运行
 
-For development, open the built app:
+开发时直接打开：
 
 ```sh
 open .build/NetSwitch.app
 ```
 
-NetSwitch appears in the macOS menu bar. The status item shows `Wi-Fi`, `Wired`, `Offline`, or `Mixed`. Click the item to switch targets, refresh status, or open Settings.
+NetSwitch 会出现在菜单栏，状态显示为「无线」「有线」「离线」或「混合」。点击菜单栏图标可以切换网络、刷新状态、打开设置或查看使用引导。
 
-## Visual Guide
+## 图文引导
 
-NetSwitch includes a `How to Use` guide from the menu bar item. It shows a simple Wi-Fi → NetSwitch → Wired flow and explains the main actions with icons:
+菜单栏里有「使用引导」。它用图文方式展示无线 → NetSwitch → 有线的切换流程，并说明主要操作：
 
-- `Wi-Fi`: switch back to the selected wireless service
-- `Wired`: switch to the selected Ethernet/USB/Thunderbolt service
-- `Settings`: choose services and automatic priority for this Mac
-- `Refresh`: update IP, SSID, and connection status
+- 「无线」：切回选中的 Wi-Fi 服务
+- 「有线」：切到选中的以太网、USB 网卡或雷雳网卡服务
+- 「设置」：选择本机网络服务、自动模式和登录自启
+- 「刷新」：更新 IP、SSID 和连接状态
 
-The first launch also opens the visual guide once, so new users can understand the Wi-Fi and wired switching model before changing network state.
+首次启动会自动打开一次图文引导。
 
-## Settings
+## 设置
 
-Open `Settings...` from the menu bar item to:
+在菜单栏中打开「设置...」可以：
 
-- Choose the Wi-Fi service and wired service for this Mac
-- Enable or disable automatic mode
-- Choose automatic priority: wired first or Wi-Fi first
+- 选择这台 Mac 的无线服务和有线服务
+- 开启或关闭自动模式
+- 选择自动优先级：有线优先或无线优先
+- 开启或关闭登录时自动启动
 
-Selections are saved in macOS `UserDefaults`, so every Mac keeps its own local configuration.
+配置保存在 macOS `UserDefaults` 中，每台 Mac 都有自己的本机配置。
 
-## Install
+## 安装
 
-Install NetSwitch into `~/Applications` and launch it automatically when you log in:
+安装到 `~/Applications` 并注册登录自启：
 
 ```sh
 ./scripts/install-app.sh
 ```
 
-After installing, you can also open it manually from Finder or Terminal:
+安装后也可以手动打开：
 
 ```sh
 open ~/Applications/NetSwitch.app
 ```
 
-Remove the installed app and login item:
+移除 app 和登录自启项：
 
 ```sh
 ./scripts/uninstall-app.sh
 ```
 
-## Distribution
+## 分发
 
-Build a universal Apple Silicon + Intel app, zip archive, and installer package:
+构建 Apple Silicon + Intel 通用 app、zip 和 pkg：
 
 ```sh
 ./scripts/package-app.sh
 ```
 
-Artifacts are written to `dist/`:
+产物会写入 `dist/`：
 
 - `NetSwitch.app`
 - `NetSwitch-<version>-universal.zip`
 - `NetSwitch-<version>-universal.pkg`
 
-The `.pkg` installs NetSwitch into `/Applications` and adds a LaunchAgent at `/Library/LaunchAgents/com.joker2.netswitch.plist` so it starts automatically for users at login.
+`.pkg` 会把 NetSwitch 安装到 `/Applications`，并添加 `/Library/LaunchAgents/com.joker2.netswitch.plist`，让应用默认随用户登录自动启动。
 
-The app bundle is ad-hoc signed for local installation and internal sharing. The `.pkg` is not Developer ID signed. Public distribution outside trusted Macs still requires an Apple Developer ID Installer certificate and notarization.
+app bundle 使用 ad-hoc 签名，适合本地安装和内部分享。`.pkg` 尚未使用 Developer ID 签名。面向陌生用户公开分发时仍需要 Apple Developer ID Installer 证书和公证。
 
-## How It Works
+## 工作方式
 
-NetSwitch uses macOS' built-in `networksetup` command:
+NetSwitch 使用 macOS 内置的 `networksetup` 命令：
 
-- Reads network services with `networksetup -listallnetworkservices`
-- Reads hardware ports with `networksetup -listallhardwareports`
-- Reads each target service IP with `networksetup -getinfo`
-- Automatically recommends Wi-Fi and a wired service from this Mac's current services
-- Enables the selected service with `networksetup -setnetworkserviceenabled <service> on`
-- When switching to `Wi-Fi`, disables the managed wired service
-- When switching to wired, keeps Wi-Fi service and Wi-Fi power on, then disconnects the current Wi-Fi association through CoreWLAN
-- Reads the Wi-Fi SSID with `networksetup -getairportnetwork` when Wi-Fi is active
+- 通过 `networksetup -listallnetworkservices` 读取网络服务
+- 通过 `networksetup -listallhardwareports` 读取硬件端口
+- 通过 `networksetup -getinfo` 读取目标服务 IP
+- 自动推荐本机的 Wi-Fi 和有线服务
+- 通过 `networksetup -setnetworkserviceenabled <service> on` 启用目标服务
+- 切到无线时，停用托管的有线服务
+- 切到有线时，保持 Wi-Fi 开关开启，只通过 CoreWLAN 断开当前 Wi-Fi 连接
+- Wi-Fi 活跃时通过 `networksetup -getairportnetwork` 读取 SSID
 
-After a switch, NetSwitch refreshes the menu automatically for a few seconds so DHCP-assigned IP addresses appear without clicking the menu again.
+切换后，NetSwitch 会自动刷新几秒，让 DHCP 分配的 IP 自动显示出来。

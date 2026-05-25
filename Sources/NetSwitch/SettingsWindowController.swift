@@ -9,14 +9,15 @@ final class SettingsWindowController: NSWindowController {
 
     private let wiFiPopup = NSPopUpButton()
     private let wiredPopup = NSPopUpButton()
-    private let autoModeButton = NSButton(checkboxWithTitle: "Automatic mode", target: nil, action: nil)
-    private let priorityControl = NSSegmentedControl(labels: ["Wired first", "Wi-Fi first"], trackingMode: .selectOne, target: nil, action: nil)
+    private let autoModeButton = NSButton(checkboxWithTitle: "启用自动模式", target: nil, action: nil)
+    private let launchAtLoginButton = NSButton(checkboxWithTitle: "登录时自动启动", target: nil, action: nil)
+    private let priorityControl = NSSegmentedControl(labels: ["有线优先", "无线优先"], trackingMode: .selectOne, target: nil, action: nil)
     private let statusLabel = DesignSystem.wrappedLabel("")
 
     init(switcher: NetworkSwitcher) {
         self.switcher = switcher
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 460), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "NetSwitch Settings"
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 520), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.title = "NetSwitch 设置"
         window.isReleasedWhenClosed = false
         super.init(window: window)
         buildContent()
@@ -45,10 +46,11 @@ final class SettingsWindowController: NSWindowController {
 
         stack.addArrangedSubview(header())
         stack.addArrangedSubview(overview())
-        stack.addArrangedSubview(section(icon: "wifi", title: "Wi-Fi Target", detail: "Used when switching back to wireless.", control: wiFiPopup))
-        stack.addArrangedSubview(section(icon: "cable.connector", title: "Wired Target", detail: "Real Ethernet, USB LAN, or Thunderbolt Ethernet services are recommended.", control: wiredPopup))
-        stack.addArrangedSubview(section(icon: "arrow.triangle.2.circlepath", title: "Automatic Mode", detail: "Let NetSwitch choose a target using your preferred priority.", control: autoModeButton))
-        stack.addArrangedSubview(section(icon: "list.bullet.indent", title: "Auto Priority", detail: "Choose which connection should win when both are available.", control: priorityControl))
+        stack.addArrangedSubview(section(icon: "wifi", title: "无线网络目标", detail: "切回无线网络时使用这个服务。", control: wiFiPopup))
+        stack.addArrangedSubview(section(icon: "cable.connector", title: "有线网络目标", detail: "推荐选择真实的以太网、USB 网卡或雷雳网卡。", control: wiredPopup))
+        stack.addArrangedSubview(section(icon: "arrow.triangle.2.circlepath", title: "自动模式", detail: "让 NetSwitch 根据你的优先级自动选择网络。", control: autoModeButton))
+        stack.addArrangedSubview(section(icon: "list.bullet.indent", title: "自动优先级", detail: "当无线和有线都可用时，决定谁优先。", control: priorityControl))
+        stack.addArrangedSubview(section(icon: "power", title: "启动方式", detail: "默认登录 macOS 后自动启动菜单栏工具。", control: launchAtLoginButton))
         stack.addArrangedSubview(statusLabel)
 
         wiFiPopup.target = self
@@ -57,14 +59,16 @@ final class SettingsWindowController: NSWindowController {
         wiredPopup.action = #selector(save)
         autoModeButton.target = self
         autoModeButton.action = #selector(save)
+        launchAtLoginButton.target = self
+        launchAtLoginButton.action = #selector(save)
         priorityControl.target = self
         priorityControl.action = #selector(save)
     }
 
     private func header() -> NSView {
         let icon = DesignSystem.iconBubble(symbol: "switch.2", tint: DesignSystem.accent, size: 28)
-        let title = DesignSystem.label("Network Switching", size: 22, weight: .semibold)
-        let detail = DesignSystem.wrappedLabel("Pick the services this Mac should use. NetSwitch remembers these choices locally.")
+        let title = DesignSystem.label("网络切换", size: 22, weight: .semibold)
+        let detail = DesignSystem.wrappedLabel("选择这台 Mac 要使用的无线和有线服务。NetSwitch 会把配置保存在本机。")
 
         let text = NSStackView(views: [title, detail])
         text.orientation = .vertical
@@ -81,7 +85,7 @@ final class SettingsWindowController: NSWindowController {
         let cards = NSStackView(views: [
             miniCard(icon: "wifi", title: "Wi-Fi", detail: selectedServiceName(from: wiFiPopup) ?? "Auto detected", tint: DesignSystem.accent),
             miniCard(icon: "cable.connector", title: "Wired", detail: selectedServiceName(from: wiredPopup) ?? "Auto detected", tint: DesignSystem.wired),
-            miniCard(icon: "arrow.triangle.2.circlepath", title: "Auto", detail: preferences.autoMode ? "Enabled" : "Manual", tint: preferences.autoMode ? DesignSystem.accent : .secondaryLabelColor)
+            miniCard(icon: "arrow.triangle.2.circlepath", title: "自动模式", detail: preferences.autoMode ? "已开启" : "手动", tint: preferences.autoMode ? DesignSystem.accent : .secondaryLabelColor)
         ])
         cards.orientation = .horizontal
         cards.spacing = 10
@@ -140,10 +144,11 @@ final class SettingsWindowController: NSWindowController {
         populate(wiFiPopup, with: services.filter { $0.kind == .wiFi }, selected: preferences.wiFiService)
         populate(wiredPopup, with: services.filter { $0.kind == .wired }, selected: preferences.wiredService)
         autoModeButton.state = preferences.autoMode ? .on : .off
+        launchAtLoginButton.state = preferences.launchAtLogin ? .on : .off
         priorityControl.selectedSegment = preferences.autoPriority == .wired ? 0 : 1
 
         let wiredCount = services.filter { $0.kind == .wired }.count
-        statusLabel.stringValue = wiredCount == 0 ? "No wired network service found. Wi-Fi remains available." : "Network services are detected from this Mac."
+        statusLabel.stringValue = wiredCount == 0 ? "未找到有线网络服务。无线网络仍然可以正常使用。" : "已根据这台 Mac 的网络服务自动识别可用目标。"
         statusLabel.textColor = wiredCount == 0 ? .systemOrange : .secondaryLabelColor
     }
 
@@ -169,6 +174,7 @@ final class SettingsWindowController: NSWindowController {
         preferences.wiFiService = wiFiPopup.selectedItem?.representedObject as? String
         preferences.wiredService = wiredPopup.selectedItem?.representedObject as? String
         preferences.autoMode = autoModeButton.state == .on
+        preferences.launchAtLogin = launchAtLoginButton.state == .on
         preferences.autoPriority = priorityControl.selectedSegment == 1 ? .wiFi : .wired
         NotificationCenter.default.post(name: .netSwitchSettingsChanged, object: nil)
     }
