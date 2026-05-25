@@ -10,6 +10,7 @@ NetSwitch 会自动识别这台 Mac 上的网络服务：
 VPN、代理、桥接和虚拟网卡不会被推荐为有线网络目标。
 
 默认语言为中文，默认登录 macOS 后自动启动。
+应用带有单实例保护，重复打开或登录项重复触发时不会叠加多个菜单栏图标。
 
 ## 环境要求
 
@@ -104,6 +105,7 @@ open ~/Applications/NetSwitch.app
 - `NetSwitch-<version>-universal.pkg`
 
 `.pkg` 会把 NetSwitch 安装到 `/Applications`，并添加 `/Library/LaunchAgents/com.joker2.netswitch.plist`，让应用默认随用户登录自动启动。
+启动项不会强制新开实例；如果 NetSwitch 已在运行，macOS 会复用当前实例。
 
 app bundle 使用 ad-hoc 签名，适合本地安装和内部分享。`.pkg` 尚未使用 Developer ID 签名。面向陌生用户公开分发时仍需要 Apple Developer ID Installer 证书和公证。
 

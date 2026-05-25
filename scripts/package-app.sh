@@ -74,7 +74,6 @@ cat > "$LAUNCH_AGENT_PLIST" <<PLIST
 	<key>ProgramArguments</key>
 	<array>
 		<string>/usr/bin/open</string>
-		<string>-n</string>
 		<string>-a</string>
 		<string>/Applications/NetSwitch.app</string>
 	</array>

@@ -39,7 +39,6 @@ struct LaunchAtLoginManager {
         \t<key>ProgramArguments</key>
         \t<array>
         \t\t<string>/usr/bin/open</string>
-        \t\t<string>-n</string>
         \t\t<string>-a</string>
         \t\t<string>\(escape(appPath))</string>
         \t</array>
