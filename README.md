@@ -63,6 +63,24 @@ Remove the installed app and login item:
 ./scripts/uninstall-app.sh
 ```
 
+## Distribution
+
+Build a universal Apple Silicon + Intel app, zip archive, and installer package:
+
+```sh
+./scripts/package-app.sh
+```
+
+Artifacts are written to `dist/`:
+
+- `NetSwitch.app`
+- `NetSwitch-<version>-universal.zip`
+- `NetSwitch-<version>-universal.pkg`
+
+The `.pkg` installs NetSwitch into `/Applications` and adds a LaunchAgent at `/Library/LaunchAgents/com.joker2.netswitch.plist` so it starts automatically for users at login.
+
+The app bundle is ad-hoc signed for local installation and internal sharing. The `.pkg` is not Developer ID signed. Public distribution outside trusted Macs still requires an Apple Developer ID Installer certificate and notarization.
+
 ## How It Works
 
 NetSwitch uses macOS' built-in `networksetup` command:
