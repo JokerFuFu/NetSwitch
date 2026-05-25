@@ -35,13 +35,33 @@ The app bundle is created at:
 
 ## Run
 
-Open the built app:
+For development, open the built app:
 
 ```sh
 open .build/NetSwitch.app
 ```
 
 NetSwitch appears in the macOS menu bar. The status item shows the active target when one is detected. Click the item and choose `Wi-Fi` or `F50 Pro` to switch networks.
+
+## Install
+
+Install NetSwitch into `~/Applications` and launch it automatically when you log in:
+
+```sh
+./scripts/install-app.sh
+```
+
+After installing, you can also open it manually from Finder or Terminal:
+
+```sh
+open ~/Applications/NetSwitch.app
+```
+
+Remove the installed app and login item:
+
+```sh
+./scripts/uninstall-app.sh
+```
 
 ## How It Works
 
