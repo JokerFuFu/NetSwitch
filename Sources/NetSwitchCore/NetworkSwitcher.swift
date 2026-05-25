@@ -80,6 +80,48 @@ public enum NetworkTargetKind: String, Sendable {
     case wired
 }
 
+public enum NetworkPriority: String, Sendable {
+    case wired
+    case wiFi
+}
+
+public struct HardwarePort: Equatable, Sendable {
+    public let name: String
+    public let device: String
+
+    public init(name: String, device: String) {
+        self.name = name
+        self.device = device
+    }
+}
+
+public struct NetworkServiceDescriptor: Equatable, Sendable {
+    public let serviceName: String
+    public let displayName: String
+    public let device: String?
+    public let kind: NetworkTargetKind?
+    public let isEnabled: Bool
+    public let ipAddress: String?
+
+    public var detailLabel: String {
+        [displayName, device, ipAddress]
+            .compactMap { value in
+                guard let value, !value.isEmpty else { return nil }
+                return value
+            }
+            .joined(separator: " · ")
+    }
+
+    public var isActive: Bool {
+        isEnabled && ipAddress != nil
+    }
+
+    public var target: NetworkTarget? {
+        guard let kind else { return nil }
+        return NetworkTarget(id: serviceName, displayName: displayName, serviceName: serviceName, kind: kind)
+    }
+}
+
 public struct NetworkTarget: Equatable, Sendable {
     public let id: String
     public let displayName: String
@@ -176,6 +218,44 @@ public struct NetworkSwitcher: Sendable {
         return NetworkSnapshot(services: serviceStates, currentSSID: try? currentSSID())
     }
 
+    public func discoverServices() throws -> [NetworkServiceDescriptor] {
+        let serviceStates = try networkServiceEnabledList()
+        let hardwarePorts = try hardwarePorts()
+        let hardwareByName = Dictionary(uniqueKeysWithValues: hardwarePorts.map { ($0.name, $0) })
+
+        return try serviceStates.map { serviceName, isEnabled in
+            let info = try runner.run(networksetup, ["-getinfo", serviceName])
+            let ipAddress = info.status == 0 ? Self.parseIPAddress(from: info.output) : nil
+            let hardware = hardwareByName[serviceName]
+            let kind = Self.classifyService(name: serviceName, device: hardware?.device)
+
+            return NetworkServiceDescriptor(
+                serviceName: serviceName,
+                displayName: serviceName,
+                device: hardware?.device,
+                kind: kind,
+                isEnabled: isEnabled,
+                ipAddress: ipAddress
+            )
+        }
+    }
+
+    public func recommendedTargets(from services: [NetworkServiceDescriptor]) -> [NetworkTarget] {
+        var targets: [NetworkTarget] = []
+
+        if let wiFi = services.first(where: { $0.kind == .wiFi })?.target {
+            targets.append(wiFi)
+        }
+
+        let wiredCandidates = services.filter { $0.kind == .wired }
+        let activeWired = wiredCandidates.first { $0.isActive }
+        if let wired = (activeWired ?? wiredCandidates.first)?.target {
+            targets.append(wired)
+        }
+
+        return targets
+    }
+
     public func switchToTarget(_ target: NetworkTarget, among targets: [NetworkTarget]) throws {
         try setNetworkService(target.serviceName, enabled: true)
 
@@ -201,12 +281,35 @@ public struct NetworkSwitcher: Sendable {
         }
     }
 
+    public func disconnectWiFiKeepingPower(serviceName: String) throws {
+        let device = try wiFiDevice()
+        try runRequired(["-setairportpower", device, "on"])
+        try setNetworkService(serviceName, enabled: true)
+        try wiFiManager.disconnectCurrentNetwork(device: device)
+    }
+
     private func networkServiceEnabledStates() throws -> [String: Bool] {
         let result = try runner.run(networksetup, ["-listallnetworkservices"])
         guard result.status == 0 else {
             throw NetworkSwitchError.commandFailed(result.combinedOutput)
         }
         return Self.parseNetworkServices(from: result.output)
+    }
+
+    private func networkServiceEnabledList() throws -> [(String, Bool)] {
+        let result = try runner.run(networksetup, ["-listallnetworkservices"])
+        guard result.status == 0 else {
+            throw NetworkSwitchError.commandFailed(result.combinedOutput)
+        }
+        return Self.parseNetworkServiceList(from: result.output)
+    }
+
+    public func hardwarePorts() throws -> [HardwarePort] {
+        let result = try runner.run(networksetup, ["-listallhardwareports"])
+        guard result.status == 0 else {
+            throw NetworkSwitchError.commandFailed(result.combinedOutput)
+        }
+        return Self.parseHardwarePorts(from: result.output)
     }
 
     private func setNetworkService(_ serviceName: String, enabled: Bool) throws {
@@ -235,6 +338,27 @@ public struct NetworkSwitcher: Sendable {
         return nil
     }
 
+    public static func parseHardwarePorts(from output: String) -> [HardwarePort] {
+        let lines = output
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+
+        var ports: [HardwarePort] = []
+        var name: String?
+
+        for line in lines {
+            if line.hasPrefix("Hardware Port:") {
+                name = String(line.dropFirst("Hardware Port:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if line.hasPrefix("Device:"), let portName = name {
+                let device = String(line.dropFirst("Device:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                ports.append(HardwarePort(name: portName, device: device))
+                name = nil
+            }
+        }
+
+        return ports
+    }
+
     public static func parseCurrentSSID(from output: String) -> String? {
         guard let separator = output.firstIndex(of: ":") else {
             return nil
@@ -244,7 +368,11 @@ public struct NetworkSwitcher: Sendable {
     }
 
     public static func parseNetworkServices(from output: String) -> [String: Bool] {
-        var services: [String: Bool] = [:]
+        Dictionary(uniqueKeysWithValues: parseNetworkServiceList(from: output))
+    }
+
+    public static func parseNetworkServiceList(from output: String) -> [(String, Bool)] {
+        var orderedServices: [(String, Bool)] = []
 
         for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = String(rawLine).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -254,13 +382,13 @@ public struct NetworkSwitcher: Sendable {
 
             if line.hasPrefix("*") {
                 let name = String(line.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
-                services[name] = false
+                orderedServices.append((name, false))
             } else {
-                services[line] = true
+                orderedServices.append((line, true))
             }
         }
 
-        return services
+        return orderedServices
     }
 
     public static func parseIPAddress(from output: String) -> String? {
@@ -274,6 +402,36 @@ public struct NetworkSwitcher: Sendable {
             if !address.isEmpty, address.lowercased() != "none" {
                 return address
             }
+        }
+
+        return nil
+    }
+
+    public static func classifyService(name: String, device: String?) -> NetworkTargetKind? {
+        let lowerName = name.lowercased()
+        let lowerDevice = device?.lowercased()
+
+        if lowerName == "wi-fi" || lowerName == "wifi" || lowerName == "airport" {
+            return .wiFi
+        }
+
+        if lowerName.contains("tailscale")
+            || lowerName.contains("shadowrocket")
+            || lowerName.contains("vpn")
+            || lowerName.contains("bridge")
+            || lowerName.contains("thunderbolt bridge")
+            || lowerDevice?.hasPrefix("utun") == true
+            || lowerDevice?.hasPrefix("bridge") == true {
+            return nil
+        }
+
+        if lowerName.contains("ethernet")
+            || lowerName.contains("lan")
+            || lowerName.contains("usb")
+            || lowerName.contains("thunderbolt")
+            || lowerName.contains("adapter")
+            || lowerDevice?.hasPrefix("en") == true {
+            return .wired
         }
 
         return nil

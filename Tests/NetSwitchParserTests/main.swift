@@ -29,8 +29,17 @@ expectEqual(NetworkSwitcher.parseWiFiDevice(from: airportPorts), "en1", "parses 
 expectEqual(NetworkSwitcher.parseCurrentSSID(from: "Current Wi-Fi Network: F50 Pro"), "F50 Pro", "parses current SSID")
 expectEqual(NetworkSwitcher.parseCurrentSSID(from: "Current Wi-Fi Network: "), nil, "empty SSID returns nil")
 expectEqual(NetworkSwitcher.parseNetworkServices(from: "An asterisk (*) denotes that a network service is disabled.\n*Wi-Fi\nF50 Pro"), ["Wi-Fi": false, "F50 Pro": true], "parses disabled network services")
+expectEqual(NetworkSwitcher.parseNetworkServiceList(from: "An asterisk (*) denotes that a network service is disabled.\n*Wi-Fi\nF50 Pro").map(\.0), ["Wi-Fi", "F50 Pro"], "preserves network service order")
 expectEqual(NetworkSwitcher.parseIPAddress(from: "DHCP Configuration\nIP address: 192.168.0.89\nRouter: 192.168.0.1"), "192.168.0.89", "parses IP address")
 expectEqual(NetworkSwitcher.parseIPAddress(from: "DHCP Configuration\nIP address: none"), nil, "ignores missing IP address")
+expectEqual(NetworkSwitcher.parseHardwarePorts(from: hardwarePorts), [
+    HardwarePort(name: "Ethernet", device: "en7"),
+    HardwarePort(name: "Wi-Fi", device: "en0")
+], "parses hardware ports")
+expectEqual(NetworkSwitcher.classifyService(name: "Wi-Fi", device: "en0"), .wiFi, "classifies Wi-Fi")
+expectEqual(NetworkSwitcher.classifyService(name: "USB 10/100/1000 LAN", device: nil), .wired, "classifies USB LAN as wired")
+expectEqual(NetworkSwitcher.classifyService(name: "Thunderbolt Bridge", device: "bridge0"), nil, "excludes bridge services")
+expectEqual(NetworkSwitcher.classifyService(name: "Tailscale", device: nil), nil, "excludes VPN services")
 
 final class FakeRunner: CommandRunning, @unchecked Sendable {
     var calls: [[String]] = []

@@ -5,17 +5,23 @@ import NetSwitchCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let switcher = NetworkSwitcher()
-    private let targets = [
-        NetworkTarget(id: "wifi", displayName: "Wi-Fi", serviceName: "Wi-Fi", kind: .wiFi),
-        NetworkTarget(id: "f50-pro", displayName: "F50 Pro", serviceName: "F50 Pro", kind: .wired)
-    ]
+    private let preferences = NetworkPreferences()
     private var isSwitching = false
     private var refreshTask: Task<Void, Never>?
+    private var autoTask: Task<Void, Never>?
+    private var settingsWindowController: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         configureStatusItem()
         rebuildMenu()
+        startAutoMonitor()
+        NotificationCenter.default.addObserver(forName: .netSwitchSettingsChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                self?.rebuildMenu()
+                self?.startAutoMonitor()
+            }
+        }
     }
 
     private func configureStatusItem() {
@@ -34,6 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
+        let services = (try? switcher.discoverServices()) ?? []
+        let targets = preferences.targetServices(from: services, switcher: switcher)
         let snapshot = try? switcher.snapshot(for: targets)
         let activeTargets = snapshot?.activeTargets(from: targets) ?? []
         updateStatusButton(activeTargets: activeTargets)
@@ -50,6 +58,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        if targets.isEmpty {
+            let setupItem = NSMenuItem(title: "No network targets found", action: nil, keyEquivalent: "")
+            setupItem.isEnabled = false
+            menu.addItem(setupItem)
+        }
+
         for target in targets {
             let item = NSMenuItem(title: menuTitle(for: target, snapshot: snapshot), action: #selector(selectTarget(_:)), keyEquivalent: "")
             item.target = self
@@ -57,6 +71,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.state = activeTargets.contains(target) ? .on : .off
             item.isEnabled = !isSwitching
             menu.addItem(item)
+        }
+
+        if targets.contains(where: { $0.kind == .wired }) == false {
+            let wiredItem = NSMenuItem(title: "No wired service found", action: nil, keyEquivalent: "")
+            wiredItem.isEnabled = false
+            menu.addItem(wiredItem)
         }
 
         if isSwitching {
@@ -72,6 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshItem.isEnabled = !isSwitching
         menu.addItem(refreshItem)
 
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
         let quitItem = NSMenuItem(title: "Quit NetSwitch", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -84,7 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if activeTargets.count == 1 {
             let target = activeTargets[0]
-            button.title = " \(target.displayName)"
+            button.title = target.kind == .wiFi ? " Wi-Fi" : " Wired"
             button.image = NSImage(systemSymbolName: target.kind == .wiFi ? "wifi" : "cable.connector", accessibilityDescription: target.displayName)
         } else if activeTargets.isEmpty {
             button.title = " Offline"
@@ -99,7 +123,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func statusTitle(for activeTargets: [NetworkTarget], snapshot: NetworkSnapshot?) -> String {
         if activeTargets.count == 1 {
-            return "Active: \(activeTargets[0].displayName)"
+            let activeTarget = activeTargets[0]
+            return "Active: \(activeTarget.kind == .wiFi ? "Wi-Fi" : "Wired")"
         }
         if activeTargets.isEmpty {
             return snapshot == nil ? "Active: Unable to read network state" : "Active: None"
@@ -131,7 +156,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func selectTarget(_ sender: NSMenuItem) {
+        let services = (try? switcher.discoverServices()) ?? []
+        let targets = preferences.targetServices(from: services, switcher: switcher)
         guard let id = sender.representedObject as? String, let target = targets.first(where: { $0.id == id }) else { return }
+        switchTarget(target, among: targets)
+    }
+
+    private func switchTarget(_ target: NetworkTarget, among targets: [NetworkTarget]) {
         isSwitching = true
         rebuildMenu()
         let switcher = switcher
@@ -143,7 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await MainActor.run {
                     self.isSwitching = false
                     self.rebuildMenu()
-                    self.refreshUntilSettled(preferredTarget: target)
+                    self.refreshUntilSettled(preferredTarget: target, among: targets)
                 }
             } catch {
                 let message = error.localizedDescription
@@ -160,15 +191,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildMenu()
     }
 
+    @objc private func openSettings() {
+        if settingsWindowController == nil {
+            settingsWindowController = SettingsWindowController(switcher: switcher)
+        }
+        settingsWindowController?.reload()
+        settingsWindowController?.showWindow(nil)
+        settingsWindowController?.window?.center()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     @objc private func quit() {
         refreshTask?.cancel()
+        autoTask?.cancel()
         NSApp.terminate(nil)
     }
 
-    private func refreshUntilSettled(preferredTarget: NetworkTarget) {
+    private func refreshUntilSettled(preferredTarget: NetworkTarget, among targets: [NetworkTarget]) {
         refreshTask?.cancel()
         let switcher = switcher
-        let targets = targets
 
         refreshTask = Task { [weak self] in
             for _ in 0..<12 {
@@ -180,6 +221,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.rebuildMenu()
                 }
 
+                if preferredTarget.kind == .wired, let wiFiTarget = targets.first(where: { $0.kind == .wiFi }) {
+                    try? switcher.disconnectWiFiKeepingPower(serviceName: wiFiTarget.serviceName)
+                }
+
                 if let snapshot, self?.hasIPAddress(for: preferredTarget, in: snapshot) == true {
                     return
                 }
@@ -189,6 +234,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private nonisolated func hasIPAddress(for target: NetworkTarget, in snapshot: NetworkSnapshot) -> Bool {
         snapshot.state(for: target.serviceName)?.ipAddress != nil
+    }
+
+    private func startAutoMonitor() {
+        autoTask?.cancel()
+        guard preferences.autoMode else { return }
+        let switcher = switcher
+
+        autoTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                await MainActor.run {
+                    self?.evaluateAutoMode(switcher: switcher)
+                }
+            }
+        }
+    }
+
+    private func evaluateAutoMode(switcher: NetworkSwitcher) {
+        guard !isSwitching else { return }
+
+        let services = (try? switcher.discoverServices()) ?? []
+        let targets = preferences.targetServices(from: services, switcher: switcher)
+        guard targets.count > 1, let snapshot = try? switcher.snapshot(for: targets) else {
+            return
+        }
+
+        let activeTargets = snapshot.activeTargets(from: targets)
+        let wiFiTarget = targets.first { $0.kind == .wiFi }
+        let wiredTarget = targets.first { $0.kind == .wired }
+        let desired: NetworkTarget?
+
+        switch preferences.autoPriority {
+        case .wired:
+            if let wiredTarget, snapshot.state(for: wiredTarget.serviceName)?.ipAddress != nil {
+                desired = wiredTarget
+            } else {
+                desired = wiFiTarget
+            }
+        case .wiFi:
+            if snapshot.currentSSID != nil {
+                desired = wiFiTarget
+            } else if let wiredTarget, snapshot.state(for: wiredTarget.serviceName)?.ipAddress != nil {
+                desired = wiredTarget
+            } else {
+                desired = wiFiTarget
+            }
+        }
+
+        guard let desired, activeTargets.contains(desired) == false else {
+            return
+        }
+        switchTarget(desired, among: targets)
     }
 
     private func showError(_ message: String, target: NetworkTarget) {

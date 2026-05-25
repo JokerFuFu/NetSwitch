@@ -1,11 +1,13 @@
 # NetSwitch
 
-NetSwitch is a small native macOS menu bar app for switching between network services with one click.
+NetSwitch is a small native macOS menu bar app for switching between Wi-Fi and wired network services with one click.
 
-The first version includes two menu choices:
+NetSwitch automatically detects this Mac's network services:
 
-- `Wi-Fi`, the built-in wireless network service
-- `F50 Pro`, a wired network service
+- The built-in Wi-Fi service
+- A real wired Ethernet, USB LAN, or Thunderbolt Ethernet service
+
+VPN, proxy, bridge, and virtual services are excluded from wired recommendations.
 
 ## Requirements
 
@@ -41,7 +43,17 @@ For development, open the built app:
 open .build/NetSwitch.app
 ```
 
-NetSwitch appears in the macOS menu bar. The status item shows the active target when one is detected. Click the item and choose `Wi-Fi` or `F50 Pro` to switch networks.
+NetSwitch appears in the macOS menu bar. The status item shows `Wi-Fi`, `Wired`, `Offline`, or `Mixed`. Click the item to switch targets, refresh status, or open Settings.
+
+## Settings
+
+Open `Settings...` from the menu bar item to:
+
+- Choose the Wi-Fi service and wired service for this Mac
+- Enable or disable automatic mode
+- Choose automatic priority: wired first or Wi-Fi first
+
+Selections are saved in macOS `UserDefaults`, so every Mac keeps its own local configuration.
 
 ## Install
 
@@ -86,10 +98,12 @@ The app bundle is ad-hoc signed for local installation and internal sharing. The
 NetSwitch uses macOS' built-in `networksetup` command:
 
 - Reads network services with `networksetup -listallnetworkservices`
+- Reads hardware ports with `networksetup -listallhardwareports`
 - Reads each target service IP with `networksetup -getinfo`
+- Automatically recommends Wi-Fi and a wired service from this Mac's current services
 - Enables the selected service with `networksetup -setnetworkserviceenabled <service> on`
 - When switching to `Wi-Fi`, disables the managed wired service
-- When switching to `F50 Pro`, keeps Wi-Fi service and Wi-Fi power on, then disconnects the current Wi-Fi association through CoreWLAN
+- When switching to wired, keeps Wi-Fi service and Wi-Fi power on, then disconnects the current Wi-Fi association through CoreWLAN
 - Reads the Wi-Fi SSID with `networksetup -getairportnetwork` when Wi-Fi is active
 
 After a switch, NetSwitch refreshes the menu automatically for a few seconds so DHCP-assigned IP addresses appear without clicking the menu again.
